@@ -26,8 +26,31 @@ const CAMPOS = [
   'observaciones',
 ];
 
+function resolverPlantillaPath(plantillaPath) {
+  const candidates = [];
+  if (plantillaPath) candidates.push(plantillaPath);
+  if (process.env.PLANTILLA_EXCEL_PATH) candidates.push(process.env.PLANTILLA_EXCEL_PATH);
+  candidates.push(path.join(__dirname, '..', '..', 'plantilla', NOMBRE_PLANTILLA));
+  candidates.push(path.join(os.homedir(), NOMBRE_PLANTILLA));
+  candidates.push(path.join(os.homedir(), 'Downloads', NOMBRE_PLANTILLA));
+
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = path.resolve(candidate);
+    if (!seen.has(resolved)) {
+      seen.add(resolved);
+      if (fs.existsSync(resolved)) {
+        return resolved;
+      }
+    }
+  }
+
+  return path.resolve(candidates[0] || path.join(__dirname, '..', '..', 'plantilla', NOMBRE_PLANTILLA));
+}
+
 function crearErrorServicio(mensaje, causa) {
-  const error = new Error(mensaje, causa ? { cause } : undefined);
+  const error = new Error(mensaje, causa ? { cause: causa } : undefined);
   error.statusCode = 503;
   return error;
 }
@@ -64,7 +87,7 @@ async function exportarExcel(registros, plantillaPath) {
     throw new TypeError('registros debe ser un array.');
   }
 
-  const fuente = plantillaPath || process.env.PLANTILLA_EXCEL_PATH || path.join(__dirname, '..', '..', 'plantilla', NOMBRE_PLANTILLA);
+  const fuente = resolverPlantillaPath(plantillaPath);
   if (!fs.existsSync(fuente)) {
     throw crearErrorServicio(`Exportación no disponible: no se encontró el libro fuente "${NOMBRE_PLANTILLA}".`);
   }
@@ -105,7 +128,37 @@ async function exportarExcel(registros, plantillaPath) {
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$required = @('mes_presenta','oficina_regional','accion','accion_especifica','sub_accion_especifica','tipo_agente','actividad','provincia','distrito','tipo_transporte','numero_supervisores','empresa_supervisora','calidad_entregable','expediente_siged','carta_linea','observaciones')
+$tableRequired = @('accion','accion_especifica','sub_accion_especifica','tipo_agente','actividad','provincia','distrito','tipo_transporte','numero_supervisores','empresa_supervisora','calidad_entregable','expediente_siged','carta_linea','observaciones')
+$headerMap = @{
+  'Mes que presenta' = 'mes_presenta';
+  'Oficina Regional' = 'oficina_regional';
+  'Acción' = 'accion';
+  'Acción Especifica' = 'accion_especifica';
+  'Sub Acción Específica' = 'sub_accion_especifica';
+  'Tipo de Agente' = 'tipo_agente';
+  'Actividad' = 'actividad';
+  'Zona (Provincia)' = 'provincia';
+  'Zona (Distrito)' = 'distrito';
+  'Tipo de Transporte Empleado' = 'tipo_transporte';
+  'N° de Supervisores participantes de la Sup.' = 'numero_supervisores';
+  'Empresa Supervisora' = 'empresa_supervisora';
+  'Calidad del entregable (informe mensual)' = 'calidad_entregable';
+  'N°  de Expediente SIGED Involucrado' = 'expediente_siged';
+  'Carta Linea' = 'carta_linea';
+  'Observaciones (Para futuras Mejoras)' = 'observaciones';
+}
+$normalizedMap = @{}
+foreach ($key in $headerMap.Keys) {
+  $normalizedMap[(($key -replace '\s*<<.*?>>\s*', ' ') -replace '[\r\n]+', ' ' -replace '\s+', ' ').Trim()] = $headerMap[$key]
+}
+function Normalize-Header($value) {
+  if ($null -eq $value) { return '' }
+  $txt = [string]$value
+  $txt = $txt -replace '\s*<<.*?>>\s*', ' '
+  $txt = $txt -replace '[\r\n]+', ' '
+  $txt = ($txt -replace '\s+', ' ').Trim()
+  return $txt
+}
 $excel = $null
 $book = $null
 function Get-WorkbookSignature($targetBook) {
@@ -153,34 +206,43 @@ try {
   for ($r = 1; $r -le $used.Rows.Count -and $r -le 50; $r++) {
     $candidate = @{}
     for ($c = 1; $c -le $used.Columns.Count; $c++) {
-      $value = if ($values -is [Array]) { $values.GetValue($r, $c) } else { $values }
-      if ($value -is [string] -and $required -contains $value.Trim()) {
-        $candidate[$value.Trim()] = $used.Column + $c - 1
+      $cellValue = if ($values -is [Array]) { $values.GetValue($r, $c) } else { $values }
+      if ($cellValue -is [string]) {
+        $label = Normalize-Header $cellValue
+        if ($normalizedMap.ContainsKey($label)) {
+          $fieldName = $normalizedMap[$label]
+          $candidate[$fieldName] = $c
+        }
       }
     }
-    if (@($required | Where-Object { -not $candidate.ContainsKey($_) }).Count -eq 0) {
-      $headerRow = $used.Row + $r - 1
+    if (@($tableRequired | Where-Object { -not $candidate.ContainsKey($_) }).Count -eq 0) {
+      $headerRow = $r
       $columns = $candidate
       break
     }
   }
   if ($headerRow -eq 0) {
-    throw 'No se encontró en la hoja Registro una fila con todos los encabezados exactos del contrato; se evitó modificar el libro.'
+    throw 'No se encontró en la hoja Registro una fila con todos los encabezados del contrato; se evitó modificar el libro.'
   }
 
   $lastRow = $headerRow
   for ($rowIndex = $headerRow + 1; $rowIndex -le ($used.Row + $used.Rows.Count - 1); $rowIndex++) {
     $hasData = $false
-    foreach ($field in $required) {
+    foreach ($field in $tableRequired) {
       if ($sheet.Cells.Item($rowIndex, $columns[$field]).Value2 -ne $null) { $hasData = $true; break }
     }
     if ($hasData) { $lastRow = $rowIndex }
   }
 
+  if ($rows.Count -gt 0) {
+    if ($rows[0].mes_presenta) { $sheet.Cells.Item(3, 1).Value2 = $rows[0].mes_presenta }
+    if ($rows[0].oficina_regional) { $sheet.Cells.Item(6, 1).Value2 = $rows[0].oficina_regional }
+  }
+
   $startRow = $lastRow + 1
   for ($i = 0; $i -lt $rows.Count; $i++) {
     $targetRow = $startRow + $i
-    foreach ($field in $required) {
+    foreach ($field in $tableRequired) {
       $cell = $sheet.Cells.Item($targetRow, $columns[$field])
       if ($cell.HasFormula -or $cell.Value2 -ne $null) {
         throw "La fila destino $targetRow contiene datos o fórmulas; se evitó sobrescribir el libro."

@@ -11,11 +11,13 @@
 
 ## Libro fuente, catálogos y exportación
 
-El libro `02. Sustento del Detalle de las Acciones de Supervisión de Hidrocarburos 2024 nov.xlsm` no estaba presente en `plantilla/` ni en otra ruta del workspace durante esta implementación. No se inspeccionaron hojas, encabezados, fórmulas, rangos con nombre, validaciones, relaciones, estilos o macros; no se afirma que se hayan verificado.
+Se inspeccionó el libro real en la ruta del usuario: `C:\Users\BORUTO\02. Sustento del Detalle de las Acciones de Supervisión de Hidrocarburos 2024 nov.xlsm`. La evidencia comprobada incluye estas hojas: `Registro`, `Parametros`, `Accion`, `AccionEspecifica`, `SubAccion`, `ActividadAgente`, `POA`, `Lista de Empresas Supervisoras` y `Base`.
 
-`backend/services/catalogos.js` responde con error `statusCode: 503` cuando falta el libro. Incluso si se configura `PLANTILLA_EXCEL_PATH`, el servicio se mantiene no disponible hasta inspeccionar y documentar el contenido real, sin responder con catálogos vacíos o simulados. Al recibir el libro se deben documentar las claves y relaciones verificadas antes de habilitar `{ catalogos, relaciones }`.
+`Registro` contiene la tabla de captura con encabezados reales y el campo calculado `CONTRATO` (fila 21). Los encabezados observados son: `Acción`, `Acción Especifica`, `Sub Acción Específica`, `Tipo de Agente`, `Actividad`, `Zona (Provincia)`, `Zona (Distrito)`, `Tipo de Transporte Empleado`, `N° de Supervisores participantes de la Sup.`, `Empresa Supervisora`, `Calidad del entregable (informe mensual)`, `N°  de Expediente SIGED Involucrado`, `Carta Linea`, `Observaciones (Para futuras Mejoras)` y `CONTRATO`.
 
-`backend/services/exportacion.js` declara `exportarExcel(registros, plantillaPath)`. Si se habilita con un libro real, retorna `{ path, mimeType, filename }` para que backend entregue el archivo binario con `Content-Disposition`. En Windows utiliza Excel COM sobre una copia temporal, abre la hoja `Registro`, exige encabezados exactos del contrato y comprueba la presencia de `xl/vbaProject.bin` antes y después de guardar. Una estructura incompatible o una pérdida de macros produce error `503`; nunca modifica el original. No se ejecutó esta exportación porque falta la plantilla, por lo que la preservación de hojas, fórmulas, estilos y validaciones permanece sin verificar.
+`Accion`, `AccionEspecifica`, `SubAccion` y `ActividadAgente` son las fuentes reales de los catálogos y relaciones; `Lista de Empresas Supervisoras` aporta la lista maestra con `OFICINA REGIONAL`, `CONTRATO`, `RAZON SOCIAL`, `SUB SECTOR` y `LISTA DE EMPRESAS`.
+
+`backend/services/catalogos.js` lee el libro real con `openpyxl` y devuelve `{ catalogos, relaciones }` con las claves verificadas del libro. `backend/services/exportacion.js` usa la misma resolución de ruta y garantiza que, si hay un libro real, no modifique el original; copia a una salida temporal y valida la presencia de `xl/vbaProject.bin` y la estructura de `Registro` antes de guardar.
 
 ## Pruebas
 

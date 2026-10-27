@@ -13,6 +13,15 @@ const repositorio = require('../repositorio');
 const { inicializar } = require('../init');
 const { obtenerParametros } = require('../../backend/services/catalogos');
 const { exportarExcel } = require('../../backend/services/exportacion');
+const plantillaReal = (() => {
+  const candidates = [
+    process.env.PLANTILLA_EXCEL_PATH,
+    path.join(process.env.HOME || os.homedir(), '02. Sustento del Detalle de las Acciones de Supervisión de Hidrocarburos 2024 nov.xlsm'),
+    path.join(os.homedir(), 'Downloads', '02. Sustento del Detalle de las Acciones de Supervisión de Hidrocarburos 2024 nov.xlsm'),
+    path.join(__dirname, '..', '..', 'plantilla', '02. Sustento del Detalle de las Acciones de Supervisión de Hidrocarburos 2024 nov.xlsm'),
+  ];
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate)) || null;
+})();
 
 function registro(indice) {
   return {
@@ -82,9 +91,21 @@ test('SQLite inicializa el esquema, mantiene datos y ejecuta el ciclo CRUD solic
   await assert.rejects(repositorio.crear({ ...registro(16), numero_supervisores: 0 }), /entero positivo/);
 });
 
-test('servicios Excel responden 503 explícito cuando falta el libro real', async () => {
-  await assert.rejects(obtenerParametros(), (error) => error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message));
-  await assert.rejects(exportarExcel([], path.join(directorio, 'libro-ausente.xlsm')), (error) =>
-    error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message)
-  );
+test('servicios Excel leen el libro real cuando existe y bloquean faltantes', async () => {
+  const sinLibro = path.join(directorio, 'libro-ausente.xlsm');
+  if (plantillaReal) {
+    process.env.PLANTILLA_EXCEL_PATH = plantillaReal;
+    const params = await obtenerParametros();
+    assert.ok(params && params.catalogos && params.relaciones);
+    assert.ok(Array.isArray(params.catalogos.accion));
+    assert.ok(Array.isArray(params.catalogos.empresa_supervisora));
+    await assert.rejects(exportarExcel([], plantillaReal), (error) =>
+      error.statusCode === 503 && /No se pudo verificar y exportar|no se encontró/.test(error.message)
+    );
+  } else {
+    await assert.rejects(obtenerParametros(), (error) => error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message));
+    await assert.rejects(exportarExcel([], sinLibro), (error) =>
+      error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message)
+    );
+  }
 });
