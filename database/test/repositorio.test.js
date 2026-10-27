@@ -121,6 +121,32 @@ test('servicios Excel leen catálogos y exportan un binario sin modificar el ori
     assert.ok(Array.isArray(params.catalogos.accion));
     assert.ok(Array.isArray(params.catalogos.empresa_supervisora));
 
+    const c = params.catalogos;
+    const r = params.relaciones;
+    for (const campo of ['mes_presenta', 'oficina_regional', 'accion', 'accion_especifica', 'sub_accion_especifica',
+      'tipo_agente', 'actividad', 'provincia', 'distrito', 'tipo_transporte', 'empresa_supervisora', 'calidad_entregable']) {
+      assert.ok(c[campo].length > 0, `catálogo vacío: ${campo}`);
+      assert.ok(c[campo].every((o) => o.valor && o.etiqueta), `opciones sin valor/etiqueta: ${campo}`);
+    }
+    assert.equal(new Set(c.tipo_agente.map((o) => o.valor)).size, c.tipo_agente.length);
+    const valores = (campo) => new Set(c[campo].map((o) => o.valor));
+    const sinHuerfanos = (rel, campoHijo) => {
+      const hijos = valores(campoHijo);
+      for (const lista of Object.values(rel)) assert.ok(lista.every((o) => hijos.has(typeof o === 'string' ? o : o.valor)));
+    };
+    assert.ok(Object.keys(r.provincia_por_oficina_regional).every((k) => valores('oficina_regional').has(k)));
+    assert.ok(Object.keys(r.accion_especifica_por_accion).every((k) => valores('accion').has(k)));
+    assert.ok(Object.keys(r.actividad_por_tipo_agente).every((k) => valores('tipo_agente').has(k)));
+    sinHuerfanos(r.accion_especifica_por_accion, 'accion_especifica');
+    sinHuerfanos(r.sub_accion_por_accion_especifica, 'sub_accion_especifica');
+    sinHuerfanos(r.actividad_por_tipo_agente, 'actividad');
+    sinHuerfanos(r.provincia_por_oficina_regional, 'provincia');
+    sinHuerfanos(r.distrito_por_oficina_provincia, 'distrito');
+    sinHuerfanos(r.empresas_supervisora_por_oficina_regional, 'empresa_supervisora');
+    for (const oficina of c.oficina_regional) {
+      assert.ok(r.empresas_supervisora_por_oficina_regional[oficina.valor]?.length > 0, `sin empresas: ${oficina.valor}`);
+    }
+
     const hashAntes = crypto.createHash('sha256').update(fs.readFileSync(plantillaReal)).digest('hex');
     const registroExportado = await repositorio.crear(registro(90));
     const archivo = await exportarExcel([registroExportado], plantillaReal);

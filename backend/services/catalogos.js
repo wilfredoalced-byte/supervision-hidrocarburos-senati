@@ -7,6 +7,8 @@ const { spawnSync } = require('node:child_process');
 
 const NOMBRE_PLANTILLA = '02. Sustento del Detalle de las Acciones de Supervisión de Hidrocarburos 2024 nov.xlsm';
 
+let cache = null;
+
 function crearErrorServicio(mensaje, causa) {
   const error = new Error(mensaje, causa ? { cause: causa } : undefined);
   error.status = 503;
@@ -40,10 +42,14 @@ function resolverPlantillaPath(plantillaPath) {
 function ejecutarPython(script, env) {
   const resultado = spawnSync('python', ['-c', script], {
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...env, PYTHONIOENCODING: 'utf-8' },
+    maxBuffer: 64 * 1024 * 1024,
     windowsHide: true,
   });
 
+  if (resultado.error) {
+    throw resultado.error;
+  }
   if (resultado.status !== 0) {
     const detalle = (resultado.stderr || resultado.stdout || '').trim();
     throw new Error(detalle || 'La inspección del Excel falló.');
@@ -52,17 +58,15 @@ function ejecutarPython(script, env) {
   return JSON.parse((resultado.stdout || '').trim() || '{}');
 }
 
-async function obtenerParametros() {
-  const plantillaPath = resolverPlantillaPath();
-  if (!fs.existsSync(plantillaPath)) {
-    throw crearErrorServicio(`Catálogos no disponibles: no se encontró el libro fuente "${NOMBRE_PLANTILLA}".`);
-  }
-
-  const script = `
-import json, os
+// Cada opción incluye `valor` y `etiqueta` (texto tal como lo guarda el libro en la hoja Registro)
+// más los campos originales de la hoja de la que proviene. Las listas dependientes se
+// resuelven con `relaciones`, indexadas por el `valor` del campo padre.
+const SCRIPT = String.raw`
+import json, os, unicodedata
 from openpyxl import load_workbook
-path = os.environ['PLANTILLA_EXCEL_PATH']
-wb = load_workbook(path, read_only=True, data_only=True)
+
+wb = load_workbook(os.environ['PLANTILLA_EXCEL_PATH'], read_only=True, data_only=True)
+
 
 def clean(value):
     if value is None:
@@ -70,115 +74,215 @@ def clean(value):
     text = str(value).strip()
     return text if text else None
 
-accion = []
-for row in wb['Accion'].iter_rows(min_row=2, values_only=True):
-    if row is None or all(v is None for v in row):
+
+def filas(hoja, min_row, max_row=None, min_col=1, max_col=None):
+    return list(wb[hoja].iter_rows(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col, values_only=True))
+
+
+def exigir(condicion, mensaje):
+    if not condicion:
+        raise ValueError(mensaje)
+
+
+def opcion(valor, **extra):
+    resultado = {'valor': valor, 'etiqueta': valor}
+    resultado.update({k: v for k, v in extra.items() if v is not None})
+    return resultado
+
+
+def unicos(items, clave):
+    vistos = set()
+    salida = []
+    for item in items:
+        k = clave(item)
+        if k in vistos:
+            continue
+        vistos.add(k)
+        salida.append(item)
+    return salida
+
+
+def agregar(relacion, padre, hijo):
+    if padre is None or hijo is None:
+        return
+    lista = relacion.setdefault(padre, [])
+    if hijo not in lista:
+        lista.append(hijo)
+
+
+# --- Listas de la hoja Base: Base!AV3:BG34 (columna AV = 48) ---
+base = filas('Base', 3, 34, 48, 59)
+
+
+def celda_base(fila, columna):
+    return base[fila - 3][columna - 48]
+
+
+exigir(clean(celda_base(4, 50)) == 'OFICINAS REGIONALES', 'Base!AX4 no contiene el encabezado OFICINAS REGIONALES.')
+exigir(clean(celda_base(11, 52)) == 'Meses', 'Base!AZ11 no contiene el encabezado Meses.')
+exigir(clean(celda_base(3, 54)) == 'Tipo de Transporte', 'Base!BB3 no contiene el encabezado Tipo de Transporte.')
+exigir(clean(celda_base(3, 57)) == 'Estado del Informe', 'Base!BE3 no contiene el encabezado Estado del Informe.')
+
+oficinas = [opcion(clean(celda_base(r, 50))) for r in range(5, 30) if clean(celda_base(r, 50))]
+meses = unicos([opcion(clean(celda_base(r, 52))) for r in range(12, 35) if clean(celda_base(r, 52))], lambda i: i['valor'])
+tipo_transporte = [
+    opcion(clean(celda_base(r, 54)), horas=celda_base(r, 55))
+    for r in range(4, 10) if clean(celda_base(r, 54))
+]
+calidad = [
+    opcion(clean(celda_base(r, 57)), criterio=clean(celda_base(r, 58)), puntaje=celda_base(r, 59))
+    for r in range(4, 7) if clean(celda_base(r, 57))
+]
+
+# --- Tabla2 (Base!AD6:AS1937): oficina regional, provincia y distrito ---
+tabla2 = filas('Base', 6, 1937, 30, 36)
+cabecera = [clean(v) for v in tabla2[0]]
+exigir(cabecera[0] == 'Oficina Regional' and cabecera[2] == 'Provincia'
+       and cabecera[4] == 'Concatenado' and cabecera[6] == 'Distrito',
+       'Los encabezados de Base!AD6:AJ6 no coinciden con lo esperado.')
+
+provincia = []
+distrito = []
+provincia_por_oficina = {}
+distrito_por_oficina_provincia = {}
+for fila in tabla2[1:]:
+    oficina, prov, concatenado, dist = clean(fila[0]), clean(fila[2]), clean(fila[4]), clean(fila[6])
+    if not (oficina and prov and concatenado):
         continue
-    item = {
-        'nombre_abreviado': clean(row[0]),
-        'accion': clean(row[1]),
-        'codigo_accion': clean(row[2]),
-        'codigo_plan_accion': row[3],
-    }
-    if item['accion'] or item['codigo_accion'] or item['nombre_abreviado']:
-        accion.append({k: v for k, v in item.items() if v is not None})
+    provincia.append(opcion(prov, oficina_regional=oficina, concatenado=concatenado))
+    agregar(provincia_por_oficina, oficina, prov)
+    if dist:
+        distrito.append(opcion(dist, oficina_regional=oficina, provincia=prov, concatenado=concatenado))
+        agregar(distrito_por_oficina_provincia, concatenado, dist)
+provincia = unicos(provincia, lambda i: i['concatenado'])
+distrito = unicos(distrito, lambda i: (i['concatenado'], i['valor']))
+
+# --- Acción, acción específica y subacción (valor = Nombre_Abreviado, como en Registro) ---
+accion = []
+codigo_accion_a_valor = {}
+for fila in filas('Accion', 2, None, 1, 4):
+    nombre = clean(fila[0])
+    if not nombre:
+        continue
+    accion.append(opcion(nombre, accion=clean(fila[1]), codigo_accion=clean(fila[2]), codigo_plan_accion=clean(fila[3])))
+    codigo_accion_a_valor[clean(fila[2])] = nombre
 
 accion_especifica = []
-for row in wb['AccionEspecifica'].iter_rows(min_row=2, values_only=True):
-    if row is None or all(v is None for v in row):
+codigo_ae_a_valor = {}
+accion_especifica_por_accion = {}
+for fila in filas('AccionEspecifica', 2, None, 1, 4):
+    nombre = clean(fila[0])
+    if not nombre:
         continue
-    item = {
-        'nombre_abreviado': clean(row[0]),
-        'accion_especifica': clean(row[1]),
-        'codigo_accion_especifica': clean(row[2]),
-        'codigo_accion': clean(row[3]),
-    }
-    if item['accion_especifica'] or item['codigo_accion_especifica']:
-        accion_especifica.append({k: v for k, v in item.items() if v is not None})
+    accion_especifica.append(opcion(nombre, accion_especifica=clean(fila[1]),
+                                    codigo_accion_especifica=clean(fila[2]), codigo_accion=clean(fila[3])))
+    codigo_ae_a_valor[clean(fila[2])] = nombre
+    agregar(accion_especifica_por_accion, codigo_accion_a_valor.get(clean(fila[3])), nombre)
 
 sub_accion = []
-for row in wb['SubAccion'].iter_rows(min_row=2, values_only=True):
-    if row is None or all(v is None for v in row):
+sub_accion_por_ae = {}
+for fila in filas('SubAccion', 2, None, 1, 5):
+    nombre = clean(fila[0])
+    if not nombre:
         continue
-    item = {
-        'nombre_abreviado': clean(row[0]),
-        'sub_accion_especifica': clean(row[1]),
-        'concat': clean(row[2]),
-        'codigo_sub_accion_especifica': clean(row[3]),
-        'codigo_accion_especifica': clean(row[4]),
-    }
-    if item['sub_accion_especifica'] or item['codigo_sub_accion_especifica']:
-        sub_accion.append({k: v for k, v in item.items() if v is not None})
+    sub_accion.append(opcion(nombre, sub_accion_especifica=clean(fila[1]), concat=clean(fila[2]),
+                             codigo_sub_accion_especifica=clean(fila[3]), codigo_accion_especifica=clean(fila[4])))
+    agregar(sub_accion_por_ae, codigo_ae_a_valor.get(clean(fila[4])), nombre)
+sub_accion = unicos(sub_accion, lambda i: i['concat'] or i['valor'])
 
+# --- Tipo de agente (TablaAgente, ActividadAgente!F:G) y actividades (A:D) ---
 tipo_agente = []
-actividades = []
-for row in wb['ActividadAgente'].iter_rows(min_row=2, values_only=True):
-    if row is None or all(v is None for v in row):
+codigo_ta_a_valor = {}
+for fila in filas('ActividadAgente', 2, None, 6, 7):
+    nombre = clean(fila[1])
+    if not nombre:
         continue
-    codigo = clean(row[0]) or clean(row[5])
-    nombre = clean(row[1]) or clean(row[6])
-    if codigo or nombre:
-        tipo_agente.append({'codigo': codigo, 'nombre': nombre})
-    actividad = {
-        'codigo_tipo_agente': codigo,
-        'tipo_agente': nombre,
-        'codigo_actividad': clean(row[2]),
-        'actividad': clean(row[3]),
-    }
-    if actividad['codigo_actividad'] or actividad['actividad']:
-        actividades.append({k: v for k, v in actividad.items() if v is not None})
+    tipo_agente.append(opcion(nombre, codigo=clean(fila[0])))
+    codigo_ta_a_valor[clean(fila[0])] = nombre
+tipo_agente = unicos(tipo_agente, lambda i: i['valor'])
+
+actividad = []
+actividad_por_tipo_agente = {}
+for fila in filas('ActividadAgente', 2, None, 1, 4):
+    nombre = clean(fila[3])
+    if not nombre:
+        continue
+    padre = clean(fila[1]) or codigo_ta_a_valor.get(clean(fila[0]))
+    actividad.append(opcion(nombre, codigo_actividad=clean(fila[2]), codigo_tipo_agente=clean(fila[0]), tipo_agente=padre))
+    agregar(actividad_por_tipo_agente, padre, nombre)
+actividad = unicos(actividad, lambda i: (i.get('tipo_agente'), i['valor']))
+
+# --- Empresas supervisoras ---
+# La hoja escribe la oficina solo en la primera fila de cada bloque; las filas siguientes
+# pertenecen a la misma oficina. Las filas con "-" son relleno y no se listan.
+def normalizar(texto):
+    sin_tildes = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('ascii')
+    return sin_tildes.replace('_', ' ').casefold()
+
+
+oficinas_base = {}
+for item in oficinas:
+    oficinas_base.setdefault(normalizar(item['valor']), []).append(item['valor'])
 
 empresas = []
-for row in wb['Lista de Empresas Supervisoras'].iter_rows(min_row=7, values_only=True):
-    if row is None or all(v is None for v in row):
+empresas_por_oficina = {}
+oficina_hoja = None
+for fila in filas('Lista de Empresas Supervisoras', 7, None, 1, 6):
+    if clean(fila[1]):
+        oficina_hoja = clean(fila[1])
+    lista = clean(fila[5])
+    if not lista or lista == '-':
         continue
-    item = {
-        'oficina_regional': clean(row[1]),
-        'contrato': clean(row[2]),
-        'razon_social': clean(row[3]),
-        'sub_sector': clean(row[4]),
-        'lista_empresas': clean(row[5]),
-    }
-    if item['lista_empresas'] or item['contrato'] or item['razon_social']:
-        empresas.append({k: v for k, v in item.items() if v is not None})
-
-relaciones = {
-    'accion_especifica_por_accion': {},
-    'sub_accion_por_accion_especifica': {},
-    'actividad_por_tipo_agente': {},
-    'empresas_supervisora_por_oficina_regional': {},
-}
-for item in accion_especifica:
-    relaciones['accion_especifica_por_accion'][item.get('codigo_accion')] = relaciones['accion_especifica_por_accion'].get(item.get('codigo_accion'), []) + [item.get('codigo_accion_especifica')]
-for item in sub_accion:
-    relaciones['sub_accion_por_accion_especifica'][item.get('codigo_accion_especifica')] = relaciones['sub_accion_por_accion_especifica'].get(item.get('codigo_accion_especifica'), []) + [item.get('codigo_sub_accion_especifica')]
-for item in actividades:
-    codigo_ta = item.get('codigo_tipo_agente')
-    if codigo_ta:
-        relaciones['actividad_por_tipo_agente'].setdefault(codigo_ta, []).append(item.get('codigo_actividad'))
-for item in empresas:
-    oficina = item.get('oficina_regional')
-    if oficina:
-        relaciones['empresas_supervisora_por_oficina_regional'].setdefault(oficina, []).append(item.get('lista_empresas'))
+    coincidencias = oficinas_base.get(normalizar(oficina_hoja), []) if oficina_hoja else []
+    oficina = coincidencias[0] if len(coincidencias) == 1 else None
+    empresas.append(opcion(lista, oficina_regional=oficina, oficina_regional_hoja=oficina_hoja,
+                           contrato=clean(fila[2]), razon_social=clean(fila[3]), sub_sector=clean(fila[4])))
+    agregar(empresas_por_oficina, oficina, lista)
 
 resultado = {
     'catalogos': {
+        'mes_presenta': meses,
+        'oficina_regional': oficinas,
         'accion': accion,
         'accion_especifica': accion_especifica,
         'sub_accion_especifica': sub_accion,
         'tipo_agente': tipo_agente,
-        'actividad': actividades,
+        'actividad': actividad,
+        'provincia': provincia,
+        'distrito': distrito,
+        'tipo_transporte': tipo_transporte,
         'empresa_supervisora': empresas,
+        'calidad_entregable': calidad,
     },
-    'relaciones': relaciones,
+    'relaciones': {
+        'accion_especifica_por_accion': accion_especifica_por_accion,
+        'sub_accion_por_accion_especifica': sub_accion_por_ae,
+        'actividad_por_tipo_agente': actividad_por_tipo_agente,
+        'provincia_por_oficina_regional': provincia_por_oficina,
+        'distrito_por_oficina_provincia': distrito_por_oficina_provincia,
+        'empresas_supervisora_por_oficina_regional': empresas_por_oficina,
+    },
 }
-print(json.dumps(resultado, ensure_ascii=False))
+print(json.dumps(resultado))
 `;
 
+async function obtenerParametros() {
+  const plantillaPath = resolverPlantillaPath();
+  if (!fs.existsSync(plantillaPath)) {
+    throw crearErrorServicio(`Catálogos no disponibles: no se encontró el libro fuente "${NOMBRE_PLANTILLA}".`);
+  }
+
+  const { mtimeMs } = fs.statSync(plantillaPath);
+  if (cache && cache.path === plantillaPath && cache.mtimeMs === mtimeMs) {
+    return cache.datos;
+  }
+
   try {
-    return ejecutarPython(script, { PLANTILLA_EXCEL_PATH: plantillaPath });
+    const datos = ejecutarPython(SCRIPT, { PLANTILLA_EXCEL_PATH: plantillaPath });
+    cache = { path: plantillaPath, mtimeMs, datos };
+    return datos;
   } catch (error) {
-    throw crearErrorServicio('Catálogos no disponibles: no se pudo leer el libro fuente.', error);
+    throw crearErrorServicio(`Catálogos no disponibles: no se pudo leer el libro fuente. ${error.message}`, error);
   }
 }
 
