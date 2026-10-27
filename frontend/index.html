@@ -1,0 +1,163 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Supervisión de Hidrocarburos</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header class="encabezado">
+    <div class="contenedor">
+      <p>Sistema de Gestión</p>
+      <h1>Registro de Acciones de Supervisión de Hidrocarburos</h1>
+      <p>Registro, consulta y seguimiento de acciones de supervisión</p>
+    </div>
+  </header>
+
+  <main class="contenedor">
+    <section class="panel">
+      <h2>Registro de supervisión</h2>
+      <p>Complete los datos correspondientes a la acción de supervisión.</p>
+
+      <form id="formRegistro">
+        <input type="hidden" id="registroId">
+
+        <div class="form-grid">
+          <div class="campo">
+            <label for="mes_presenta">Mes de presentación</label>
+            <select id="mes_presenta" name="mes_presenta"></select>
+          </div>
+
+          <div class="campo">
+            <label for="oficina_regional">Oficina regional</label>
+            <select id="oficina_regional" name="oficina_regional"></select>
+          </div>
+
+          <div class="campo">
+            <label for="accion">Acción</label>
+            <select id="accion" name="accion"></select>
+          </div>
+
+          <div class="campo">
+            <label for="accion_especifica">Acción específica</label>
+            <select id="accion_especifica" name="accion_especifica"></select>
+          </div>
+
+          <div class="campo">
+            <label for="sub_accion_especifica">Subacción específica</label>
+            <select id="sub_accion_especifica" name="sub_accion_especifica"></select>
+          </div>
+
+          <div class="campo">
+            <label for="tipo_agente">Tipo de agente</label>
+            <select id="tipo_agente" name="tipo_agente"></select>
+          </div>
+
+          <div class="campo">
+            <label for="actividad">Actividad</label>
+            <select id="actividad" name="actividad"></select>
+          </div>
+
+          <div class="campo">
+            <label for="provincia">Provincia</label>
+            <select id="provincia" name="provincia"></select>
+          </div>
+
+          <div class="campo">
+            <label for="distrito">Distrito</label>
+            <select id="distrito" name="distrito"></select>
+          </div>
+
+          <div class="campo">
+            <label for="tipo_transporte">Tipo de transporte</label>
+            <select id="tipo_transporte" name="tipo_transporte"></select>
+          </div>
+
+          <div class="campo">
+            <label for="numero_supervisores">Número de supervisores</label>
+            <input type="number" id="numero_supervisores"
+                   name="numero_supervisores" min="1" step="1">
+          </div>
+
+          <div class="campo">
+            <label for="empresa_supervisora">Empresa supervisora</label>
+            <select id="empresa_supervisora" name="empresa_supervisora"></select>
+          </div>
+
+          <div class="campo">
+            <label for="calidad_entregable">Calidad del entregable</label>
+            <select id="calidad_entregable" name="calidad_entregable"></select>
+          </div>
+
+          <div class="campo">
+            <label for="expediente_siged">Expediente SIGED</label>
+            <input type="text" id="expediente_siged" name="expediente_siged">
+          </div>
+
+          <div class="campo">
+            <label for="carta_linea">Carta / Línea</label>
+            <input type="text" id="carta_linea" name="carta_linea">
+          </div>
+
+          <div class="campo campo-completo">
+            <label for="observaciones">Observaciones</label>
+            <textarea id="observaciones" name="observaciones"
+                      rows="3"></textarea>
+          </div>
+        </div>
+
+        <div class="acciones">
+          <button type="submit" id="btnGuardar">Guardar registro</button>
+          <button type="reset" id="btnLimpiar" class="secundario">
+            Limpiar formulario
+          </button>
+        </div>
+      </form>
+
+      <p id="mensaje" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Registros de supervisión</h2>
+
+      <div class="barra-herramientas">
+        <input type="search" id="buscarRegistro"
+               placeholder="Buscar expediente, acción o empresa..."
+               aria-label="Buscar registros">
+        <button type="button" id="btnExportar">
+          Exportar a Excel
+        </button>
+      </div>
+
+      <div class="tabla-contenedor">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Mes</th>
+              <th>Oficina</th>
+              <th>Acción</th>
+              <th>Provincia</th>
+              <th>Empresa supervisora</th>
+              <th>Expediente SIGED</th>
+              <th>Operaciones</th>
+            </tr>
+          </thead>
+          <tbody id="tablaRegistros">
+            <tr>
+              <td colspan="8">Esperando conexión con el servidor...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pie">
+    <p>Sistema académico de supervisión de hidrocarburos</p>
+  </footer>
+</body>
+</html>
