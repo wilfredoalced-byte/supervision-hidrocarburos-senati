@@ -1,7 +1,7 @@
 const CAMPOS = ['mes_presenta','oficina_regional','accion','accion_especifica','sub_accion_especifica','tipo_agente','actividad','provincia','distrito','tipo_transporte','numero_supervisores','empresa_supervisora','calidad_entregable','expediente_siged','carta_linea','observaciones'];
 const FILTROS = ['expediente_siged','accion','empresa_supervisora','provincia','mes_presenta'];
 function validarId(raw) {
-  if (!/^[1-9]\\d*$/.test(String(raw)) || !Number.isSafeInteger(Number(raw))) {
+  if (!/^[1-9]\d*$/.test(String(raw)) || !Number.isSafeInteger(Number(raw))) {
     const error = new Error('id inválido'); error.status = 400; throw error;
   }
   return Number(raw);
