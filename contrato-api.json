@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "apiBase": "http://localhost:3000/api",
+  "recordFields": [
+    "mes_presenta",
+    "oficina_regional",
+    "accion",
+    "accion_especifica",
+    "sub_accion_especifica",
+    "tipo_agente",
+    "actividad",
+    "provincia",
+    "distrito",
+    "tipo_transporte",
+    "numero_supervisores",
+    "empresa_supervisora",
+    "calidad_entregable",
+    "expediente_siged",
+    "carta_linea",
+    "observaciones"
+  ],
+  "calculatedField": "contrato",
+  "endpoints": {
+    "GET /api/health": "estado del servidor",
+    "GET /api/parametros": "catálogos y relaciones reales del Excel",
+    "GET /api/registros": "lista y filtros opcionales: expediente_siged,accion,empresa_supervisora,provincia,mes_presenta",
+    "GET /api/registros/:id": "detalle",
+    "POST /api/registros": "crear",
+    "PUT /api/registros/:id": "actualizar",
+    "DELETE /api/registros/:id": "eliminar",
+    "GET /api/exportar-excel": "descarga de reporte generado desde SQLite"
+  },
+  "response": {
+    "list": {
+      "data": []
+    },
+    "detail": {
+      "data": {}
+    },
+    "error": {
+      "error": "Descripción del error"
+    }
+  },
+  "ownership": {
+    "frontend": "frontend/**",
+    "backend": "backend/**",
+    "database": "database/**, plantilla/**, backend/services/catalogos.js, backend/services/exportacion.js"
+  }
+}
