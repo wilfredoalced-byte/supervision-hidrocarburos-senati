@@ -67,33 +67,68 @@ async function peticion(ruta, opciones = {}) {
 function llenarSelect(campo, opciones, seleccionado = "") {
   const select = document.getElementById(campo);
   if (!select) return;
-
   select.replaceChildren(new Option("Seleccione una opción", ""));
-
-  if (!Array.isArray(opciones)) {
-    select.disabled = true;
-    return;
-  }
-
+  if (!Array.isArray(opciones)) { select.disabled = true; return; }
+  const vistos = new Set();
   for (const item of opciones) {
-    let valor;
-    let etiqueta;
-
+    let valor, etiqueta;
     if (typeof item === "string" || typeof item === "number") {
-      valor = String(item);
-      etiqueta = String(item);
+      valor = etiqueta = String(item);
     } else if (item && typeof item === "object") {
-      valor = item.valor ?? item.value ?? item.codigo ?? item.id ?? item.codigo_accion ?? item.codigo_accion_especifica ?? item.codigo_sub_accion_especifica ?? item.codigo_actividad ?? item.lista_empresas ?? item.oficina_regional ?? item.nombre_abreviado ?? item.accion ?? item.accion_especifica ?? item.sub_accion_especifica ?? item.actividad;
-      etiqueta = item.etiqueta ?? item.label ?? item.nombre ?? item.accion ?? item.accion_especifica ?? item.sub_accion_especifica ?? item.actividad ?? item.lista_empresas ?? item.razon_social ?? item.nombre_abreviado ?? valor;
+      // Registro utiliza nombres abreviados; los códigos solo sirven para relaciones.
+      if (campo === "accion") valor = item.nombre_abreviado ?? item.accion;
+      else if (campo === "accion_especifica") valor = item.nombre_abreviado ?? item.accion_especifica;
+      else if (campo === "sub_accion_especifica") valor = item.nombre_abreviado ?? item.sub_accion_especifica;
+      else if (campo === "tipo_agente") valor = item.nombre;
+      else if (campo === "actividad") valor = item.actividad;
+      else if (campo === "empresa_supervisora") valor = item.lista_empresas;
+      else valor = item.valor ?? item.nombre ?? item.codigo;
+      etiqueta = valor;
     }
-
-    if (valor === undefined || valor === null) continue;
-
+    if (valor == null || vistos.has(String(valor))) continue;
+    vistos.add(String(valor));
     select.add(new Option(String(etiqueta), String(valor)));
   }
-
   select.value = String(seleccionado ?? "");
-  select.disabled = opciones.length === 0;
+  select.disabled = select.options.length < 2;
+}
+
+// Relaciones basadas en los códigos reales del Excel; no en el texto mostrado.
+const DEPENDENCIAS = {
+  accion: { destino: "accion_especifica", codigoPadre: "codigo_accion", codigoHijo: "codigo_accion" },
+  accion_especifica: { destino: "sub_accion_especifica", codigoPadre: "codigo_accion_especifica", codigoHijo: "codigo_accion_especifica" },
+  tipo_agente: { destino: "actividad", codigoPadre: "codigo", codigoHijo: "codigo_tipo_agente" },
+  oficina_regional: { destino: "empresa_supervisora", codigoPadre: null, codigoHijo: "oficina_regional" }
+};
+
+function valorCatalogo(campo, item) {
+  if (typeof item !== "object" || item === null) return String(item ?? "");
+  const claves = {
+    accion: ["nombre_abreviado", "accion"],
+    accion_especifica: ["nombre_abreviado", "accion_especifica"],
+    sub_accion_especifica: ["nombre_abreviado", "sub_accion_especifica"],
+    tipo_agente: ["nombre"], actividad: ["actividad"],
+    empresa_supervisora: ["lista_empresas"]
+  };
+  const clave = (claves[campo] ?? ["valor", "nombre", "codigo"]).find(k => item[k] != null);
+  return String(clave ? item[clave] : "");
+}
+
+function dependientes(campo, seleccionado = "") {
+  const cfg = DEPENDENCIAS[campo];
+  if (!cfg) return;
+  const elegido = document.getElementById(campo)?.value ?? "";
+  const padre = (catalogos[campo] ?? []).find(item => valorCatalogo(campo, item) === elegido);
+  const codigo = cfg.codigoPadre ? padre?.[cfg.codigoPadre] : elegido;
+  const opciones = codigo == null || codigo === "" ? [] :
+    (catalogos[cfg.destino] ?? []).filter(item =>
+      String(item[cfg.codigoHijo] ?? "") === String(codigo));
+  llenarSelect(cfg.destino, opciones, seleccionado);
+  if (!seleccionado) dependientes(cfg.destino);
+}
+
+for (const campo of Object.keys(DEPENDENCIAS)) {
+  document.getElementById(campo)?.addEventListener("change", () => dependientes(campo));
 }
 
 async function cargarCatalogos() {
@@ -107,6 +142,7 @@ async function cargarCatalogos() {
       llenarSelect(campo, catalogos[campo]);
     }
 
+    for (const campo of Object.keys(DEPENDENCIAS)) dependientes(campo);
     mostrarMensaje("Catálogos cargados correctamente.");
   } catch (error) {
     for (const campo of SELECTS) {
@@ -235,6 +271,7 @@ function filtrarRegistros() {
 function limpiarFormulario() {
   document.getElementById("registroId").value = "";
   btnGuardar.textContent = "Guardar registro";
+  for (const campo of Object.keys(DEPENDENCIAS)) dependientes(campo);
   mostrarMensaje("");
 }
 
@@ -253,6 +290,9 @@ async function editarRegistro(id) {
       }
     }
 
+    for (const campo of Object.keys(DEPENDENCIAS)) {
+      dependientes(campo, registro[DEPENDENCIAS[campo].destino]);
+    }
     document.getElementById("registroId").value = registro.id;
     btnGuardar.textContent = "Actualizar registro";
 

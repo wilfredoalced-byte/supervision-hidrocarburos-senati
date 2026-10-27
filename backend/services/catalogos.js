@@ -68,6 +68,14 @@ def clean(value):
     if value is None:
         return None
     text = str(value).strip()
+    # El libro original contiene algunas cadenas UTF-8 interpretadas como Latin-1.
+    if 'Ã' in text or 'Â' in text or '�' in text:
+        try:
+            reparado = text.encode('latin-1').decode('utf-8')
+            if reparado.count('Ã') + reparado.count('�') < text.count('Ã') + text.count('�'):
+                text = reparado
+        except (UnicodeError, ValueError):
+            pass
     return text if text else None
 
 accion = []
@@ -161,8 +169,36 @@ for item in empresas:
     if oficina:
         relaciones['empresas_supervisora_por_oficina_regional'].setdefault(oficina, []).append(item.get('lista_empresas'))
 
+# Catálogos complementarios tomados del libro fuente, nunca de datos inventados.
+registro = wb['Registro']
+def valores_registro(col):
+    return sorted({v for fila in registro.iter_rows(min_row=22, max_col=col, values_only=True)
+                   if (v := clean(fila[col-1])) and not v.startswith('#')})
+meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+mes_actual = clean(registro['A3'].value)
+if mes_actual and mes_actual not in meses: meses.append(mes_actual)
+oficinas = sorted({v for item in empresas if (v := item.get('oficina_regional'))} | ({clean(registro['A6'].value)} if clean(registro['A6'].value) else set()))
+# La lista de empresas tiene celdas de oficina combinadas: heredar la oficina previa.
+oficina_anterior = None
+for item in empresas:
+    if item.get('oficina_regional'): oficina_anterior = item['oficina_regional']
+    else: item['oficina_regional'] = oficina_anterior
+oficinas = sorted({v for item in empresas if (v := item.get('oficina_regional'))})
+relaciones['empresas_supervisora_por_oficina_regional'] = {}
+for item in empresas:
+    oficina = item.get('oficina_regional')
+    if oficina and item.get('lista_empresas'):
+        relaciones['empresas_supervisora_por_oficina_regional'].setdefault(oficina, []).append(item['lista_empresas'])
+# Evitar entradas duplicadas de tipos de agente.
+tipo_agente = list({item['codigo']: item for item in tipo_agente if item.get('codigo')}.values())
 resultado = {
     'catalogos': {
+        'mes_presenta': meses,
+        'oficina_regional': oficinas,
+        'provincia': valores_registro(6),
+        'distrito': valores_registro(7),
+        'tipo_transporte': valores_registro(8),
+        'calidad_entregable': valores_registro(11),
         'accion': accion,
         'accion_especifica': accion_especifica,
         'sub_accion_especifica': sub_accion,
