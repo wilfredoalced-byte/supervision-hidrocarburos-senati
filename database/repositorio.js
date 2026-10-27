@@ -39,18 +39,17 @@ function validarRegistro(registro) {
     throw new TypeError(`Campo(s) no permitido(s): ${camposDesconocidos.join(', ')}`);
   }
 
-  const faltantes = CAMPOS.filter((campo) => !Object.hasOwn(registro, campo));
-  if (faltantes.length) {
-    throw new TypeError(`Falta(n) campo(s) del contrato: ${faltantes.join(', ')}`);
+  if (Object.keys(registro).length === 0) {
+    throw new TypeError('Debe proporcionarse al menos un campo del registro.');
   }
 
-  for (const campo of CAMPOS) {
+  for (const [campo, valor] of Object.entries(registro)) {
     if (campo === 'numero_supervisores') {
-      if (!Number.isInteger(registro[campo]) || registro[campo] <= 0) {
-        throw new TypeError('numero_supervisores debe ser un entero positivo.');
+      if (valor !== null && (!Number.isInteger(valor) || valor <= 0)) {
+        throw new TypeError('numero_supervisores debe ser un entero positivo o null.');
       }
-    } else if (typeof registro[campo] !== 'string') {
-      throw new TypeError(`${campo} debe ser texto.`);
+    } else if (valor !== null && typeof valor !== 'string') {
+      throw new TypeError(`${campo} debe ser texto o null.`);
     }
   }
 }
@@ -101,9 +100,10 @@ async function obtener(id) {
 
 async function crear(registro) {
   validarRegistro(registro);
-  const placeholders = CAMPOS.map(() => '?').join(', ');
-  const sql = `INSERT INTO registros (${CAMPOS.join(', ')}) VALUES (${placeholders}) RETURNING id, ${CAMPOS.join(', ')}`;
-  const valores = CAMPOS.map((campo) => registro[campo]);
+  const campos = Object.keys(registro);
+  const placeholders = campos.map(() => '?').join(', ');
+  const sql = `INSERT INTO registros (${campos.join(', ')}) VALUES (${placeholders}) RETURNING id, ${CAMPOS.join(', ')}`;
+  const valores = campos.map((campo) => registro[campo]);
   return withDatabase((database) => database.prepare(sql).get(...valores));
 }
 
@@ -113,9 +113,10 @@ async function actualizar(id, registro) {
   }
   validarRegistro(registro);
 
-  const asignaciones = CAMPOS.map((campo) => `${campo} = ?`).join(', ');
+  const campos = Object.keys(registro);
+  const asignaciones = campos.map((campo) => `${campo} = ?`).join(', ');
   const sql = `UPDATE registros SET ${asignaciones} WHERE id = ? RETURNING id, ${CAMPOS.join(', ')}`;
-  const valores = [...CAMPOS.map((campo) => registro[campo]), id];
+  const valores = [...campos.map((campo) => registro[campo]), id];
   return withDatabase((database) => database.prepare(sql).get(...valores) || null);
 }
 

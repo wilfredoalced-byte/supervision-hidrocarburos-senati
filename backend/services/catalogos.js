@@ -9,6 +9,7 @@ const NOMBRE_PLANTILLA = '02. Sustento del Detalle de las Acciones de Supervisi√
 
 function crearErrorServicio(mensaje, causa) {
   const error = new Error(mensaje, causa ? { cause: causa } : undefined);
+  error.status = 503;
   error.statusCode = 503;
   return error;
 }
@@ -174,7 +175,11 @@ resultado = {
 print(json.dumps(resultado, ensure_ascii=False))
 `;
 
-  return ejecutarPython(script, { PLANTILLA_EXCEL_PATH: plantillaPath });
+  try {
+    return ejecutarPython(script, { PLANTILLA_EXCEL_PATH: plantillaPath });
+  } catch (error) {
+    throw crearErrorServicio('Cat√°logos no disponibles: no se pudo leer el libro fuente.', error);
+  }
 }
 
 module.exports = { obtenerParametros };

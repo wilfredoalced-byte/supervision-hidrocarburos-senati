@@ -6,7 +6,6 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const NOMBRE_PLANTILLA = '02. Sustento del Detalle de las Acciones de Supervisión de Hidrocarburos 2024 nov.xlsm';
-const MIME_XLSM = 'application/vnd.ms-excel.sheet.macroEnabled.12';
 const CAMPOS = [
   'mes_presenta',
   'oficina_regional',
@@ -51,6 +50,7 @@ function resolverPlantillaPath(plantillaPath) {
 
 function crearErrorServicio(mensaje, causa) {
   const error = new Error(mensaje, causa ? { cause: causa } : undefined);
+  error.status = 503;
   error.statusCode = 503;
   return error;
 }
@@ -105,11 +105,12 @@ async function exportarExcel(registros, plantillaPath) {
         throw new TypeError(`Falta el campo ${campo} en un registro.`);
       }
       if (campo === 'numero_supervisores') {
-        if (!Number.isInteger(registro[campo]) || registro[campo] <= 0) {
-          throw new TypeError('numero_supervisores debe ser un entero positivo.');
+        if (registro[campo] !== null
+          && (!Number.isInteger(registro[campo]) || registro[campo] <= 0)) {
+          throw new TypeError('numero_supervisores debe ser un entero positivo o null.');
         }
-      } else if (typeof registro[campo] !== 'string') {
-        throw new TypeError(`${campo} debe ser texto.`);
+      } else if (registro[campo] !== null && typeof registro[campo] !== 'string') {
+        throw new TypeError(`${campo} debe ser texto o null.`);
       }
       fila[campo] = registro[campo];
     }
@@ -247,7 +248,14 @@ try {
       if ($cell.HasFormula -or $cell.Value2 -ne $null) {
         throw "La fila destino $targetRow contiene datos o fórmulas; se evitó sobrescribir el libro."
       }
-      $cell.Value2 = $rows[$i].$field
+      $value = $rows[$i].PSObject.Properties[$field].Value
+      if ($null -eq $value) {
+        $cell.ClearContents()
+      } elseif ($field -eq 'numero_supervisores') {
+        $cell.Value2 = [double]$value
+      } else {
+        $cell.Value2 = [string]$value
+      }
     }
   }
 
@@ -292,13 +300,11 @@ try {
 
   try {
     fs.writeFileSync(datosPath, JSON.stringify(datos), 'utf8');
-    fs.writeFileSync(scriptPath, script, 'utf8');
+    fs.writeFileSync(scriptPath, `\uFEFF${script}`, 'utf8');
     await ejecutarPowerShell(scriptPath, [fuente, salidaPath, datosPath]);
-    return {
-      path: salidaPath,
-      mimeType: MIME_XLSM,
-      filename: path.basename(salidaPath),
-    };
+    const archivo = fs.readFileSync(salidaPath);
+    fs.rmSync(directorioTemporal, { recursive: true, force: true });
+    return archivo;
   } catch (error) {
     fs.rmSync(directorioTemporal, { recursive: true, force: true });
     throw crearErrorServicio(`No se pudo verificar y exportar el libro Excel sin alterar sus macros: ${error.message}`, error);

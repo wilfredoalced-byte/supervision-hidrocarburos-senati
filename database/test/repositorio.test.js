@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -91,7 +92,27 @@ test('SQLite inicializa el esquema, mantiene datos y ejecuta el ciclo CRUD solic
   await assert.rejects(repositorio.crear({ ...registro(16), numero_supervisores: 0 }), /entero positivo/);
 });
 
-test('servicios Excel leen el libro real cuando existe y bloquean faltantes', async () => {
+test('el repositorio acepta altas y ediciones parciales del contrato de API', async () => {
+  const creado = await repositorio.crear({
+    expediente_siged: '000123',
+    numero_supervisores: 2,
+    provincia: 'Lima',
+    carta_linea: null,
+  });
+  assert.equal(creado.expediente_siged, '000123');
+  assert.equal(creado.numero_supervisores, 2);
+  assert.equal(creado.provincia, 'Lima');
+  assert.equal(creado.carta_linea, null);
+  assert.equal(creado.accion, null);
+
+  const actualizado = await repositorio.actualizar(creado.id, { carta_linea: '001' });
+  assert.equal(actualizado.carta_linea, '001');
+  assert.equal(actualizado.expediente_siged, '000123');
+  assert.equal(actualizado.numero_supervisores, 2);
+  await assert.rejects(repositorio.actualizar(creado.id, {}), /al menos un campo/);
+});
+
+test('servicios Excel leen catálogos y exportan un binario sin modificar el origen', async () => {
   const sinLibro = path.join(directorio, 'libro-ausente.xlsm');
   if (plantillaReal) {
     process.env.PLANTILLA_EXCEL_PATH = plantillaReal;
@@ -99,13 +120,21 @@ test('servicios Excel leen el libro real cuando existe y bloquean faltantes', as
     assert.ok(params && params.catalogos && params.relaciones);
     assert.ok(Array.isArray(params.catalogos.accion));
     assert.ok(Array.isArray(params.catalogos.empresa_supervisora));
-    await assert.rejects(exportarExcel([], plantillaReal), (error) =>
-      error.statusCode === 503 && /No se pudo verificar y exportar|no se encontró/.test(error.message)
-    );
+
+    const hashAntes = crypto.createHash('sha256').update(fs.readFileSync(plantillaReal)).digest('hex');
+    const registroExportado = await repositorio.crear(registro(90));
+    const archivo = await exportarExcel([registroExportado], plantillaReal);
+    assert.ok(Buffer.isBuffer(archivo) || archivo instanceof Uint8Array);
+    assert.ok(archivo.byteLength > 0);
+    assert.deepEqual([...archivo.subarray(0, 4)], [0x50, 0x4b, 0x03, 0x04]);
+    const hashDespues = crypto.createHash('sha256').update(fs.readFileSync(plantillaReal)).digest('hex');
+    assert.equal(hashDespues, hashAntes);
   } else {
-    await assert.rejects(obtenerParametros(), (error) => error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message));
+    await assert.rejects(obtenerParametros(), (error) =>
+      error.status === 503 && error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message)
+    );
     await assert.rejects(exportarExcel([], sinLibro), (error) =>
-      error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message)
+      error.status === 503 && error.statusCode === 503 && /no se encontró el libro fuente/.test(error.message)
     );
   }
 });
