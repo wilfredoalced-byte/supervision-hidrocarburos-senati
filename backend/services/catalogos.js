@@ -40,7 +40,7 @@ function resolverPlantillaPath(plantillaPath) {
 function ejecutarPython(script, env) {
   const resultado = spawnSync('python', ['-c', script], {
     encoding: 'utf8',
-    env: { ...process.env, ...env },
+    env: { ...process.env, ...env, PYTHONIOENCODING: 'utf-8' },
     windowsHide: true,
   });
 
