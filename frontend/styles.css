@@ -1,0 +1,258 @@
+
+/* ESTILOS GENERALES */
+:root {
+  --primario: #153b62;
+  --primario-oscuro: #0d2945;
+  --acento: #087e8b;
+  --fondo: #f3f6fa;
+  --blanco: #ffffff;
+  --texto: #243447;
+  --borde: #dce4ed;
+  --sombra: 0 5px 24px rgba(18, 47, 77, 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: var(--fondo);
+  color: var(--texto);
+  line-height: 1.5;
+}
+
+.contenedor {
+  width: min(1200px, 94%);
+  margin: 0 auto;
+}
+
+/* ENCABEZADO */
+.encabezado {
+  background: linear-gradient(125deg, #0d2945, #205c8d);
+  color: white;
+  padding: 42px 0;
+}
+
+.encabezado h1 {
+  font-size: clamp(1.5rem, 3vw, 2.3rem);
+  line-height: 1.25;
+  margin: 8px 0;
+}
+
+.encabezado p {
+  margin: 5px 0;
+  opacity: 0.9;
+}
+
+/* PANELES */
+main {
+  padding-top: 30px;
+  padding-bottom: 40px;
+}
+
+.panel {
+  background: var(--blanco);
+  padding: 28px;
+  margin-bottom: 25px;
+  border: 1px solid var(--borde);
+  border-radius: 14px;
+  box-shadow: var(--sombra);
+}
+
+.panel h2 {
+  margin: 0 0 8px;
+  color: var(--primario);
+  font-size: 1.35rem;
+}
+
+.panel > p {
+  color: #65758a;
+  margin-bottom: 24px;
+}
+
+/* FORMULARIO */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 25px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+}
+
+.campo label {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.campo input,
+.campo select,
+.campo textarea,
+.barra-herramientas input {
+  width: 100%;
+  min-height: 43px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--texto);
+  background: white;
+}
+
+.campo textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+.campo input:focus,
+.campo select:focus,
+.campo textarea:focus,
+.barra-herramientas input:focus {
+  outline: 2px solid #83c6d1;
+  border-color: var(--acento);
+}
+
+.campo-completo {
+  grid-column: 1 / -1;
+}
+
+/* BOTONES */
+.acciones,
+.barra-herramientas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 25px;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  background: var(--primario);
+  color: white;
+  padding: 12px 19px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+button:hover {
+  background: var(--primario-oscuro);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.secundario {
+  background: #e9eef5;
+  color: var(--primario);
+}
+
+button.secundario:hover {
+  background: #d9e4ef;
+}
+
+#btnExportar {
+  background: var(--acento);
+}
+
+/* TABLA */
+.barra-herramientas {
+  margin: 20px 0;
+  justify-content: space-between;
+}
+
+.barra-herramientas input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.tabla-contenedor {
+  overflow-x: auto;
+  border: 1px solid var(--borde);
+  border-radius: 9px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 850px;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  padding: 13px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--borde);
+}
+
+th {
+  background: #eaf0f6;
+  color: var(--primario);
+  font-weight: 700;
+}
+
+tbody tr:hover {
+  background: #f7fafc;
+}
+
+#mensaje {
+  margin-top: 15px;
+  font-weight: 600;
+}
+
+.pie {
+  text-align: center;
+  padding: 20px;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+/* TABLETS */
+@media (max-width: 900px) {
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* CELULARES */
+@media (max-width: 600px) {
+  .encabezado {
+    padding: 30px 0;
+  }
+
+  .panel {
+    padding: 18px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .acciones,
+  .barra-herramientas {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  button {
+    width: 100%;
+  }
+
+  .barra-herramientas input {
+    min-width: 0;
+  }
+}
