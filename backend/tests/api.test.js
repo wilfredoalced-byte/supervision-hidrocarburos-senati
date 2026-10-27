@@ -50,5 +50,5 @@ test('dependencias no disponibles devuelven 503', async () => {
 test('exportación envía attachment con bytes', async () => {
   const res=await request(preparar()).get('/api/exportar-excel');
   assert.equal(res.status,200);assert.match(res.headers['content-disposition'],/attachment/);
-  assert.match(res.headers['content-type'],/macroenabled/);
+  assert.match(res.headers['content-type'],/macroenabled/i);
 });
