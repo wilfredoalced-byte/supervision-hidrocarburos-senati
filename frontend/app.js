@@ -83,8 +83,8 @@ function llenarSelect(campo, opciones, seleccionado = "") {
       valor = String(item);
       etiqueta = String(item);
     } else if (item && typeof item === "object") {
-      valor = item.valor ?? item.value ?? item.codigo ?? item.id;
-      etiqueta = item.etiqueta ?? item.label ?? item.nombre ?? valor;
+      valor = item.valor ?? item.value ?? item.codigo ?? item.id ?? item.codigo_accion ?? item.codigo_accion_especifica ?? item.codigo_sub_accion_especifica ?? item.codigo_actividad ?? item.lista_empresas ?? item.oficina_regional ?? item.nombre_abreviado ?? item.accion ?? item.accion_especifica ?? item.sub_accion_especifica ?? item.actividad;
+      etiqueta = item.etiqueta ?? item.label ?? item.nombre ?? item.accion ?? item.accion_especifica ?? item.sub_accion_especifica ?? item.actividad ?? item.lista_empresas ?? item.razon_social ?? item.nombre_abreviado ?? valor;
     }
 
     if (valor === undefined || valor === null) continue;
