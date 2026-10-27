@@ -107,7 +107,8 @@ async function cargarCatalogos() {
       llenarSelect(campo, catalogos[campo]);
     }
 
-    mostrarMensaje("Catálogos cargados correctamente.");
+    const faltantes = SELECTS.filter(c => !catalogos[c]?.length);
+    mostrarMensaje(faltantes.length ? 'Faltan opciones para: ' + faltantes.join(', ') : 'Catálogos cargados correctamente.', faltantes.length > 0);
   } catch (error) {
     for (const campo of SELECTS) {
       llenarSelect(campo, []);
